@@ -3,85 +3,84 @@ import crypto from "crypto"
 import nodemailer from "nodemailer"
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { registerSchema } from "../utils/validation.js";
 
 const registerUser = async (req, res) => {
-  //Get Data
-  //Validate
-  //check if user already exist
-  //create a user in database
-  //create a verification token
-  //save token in database
-  //send success status to user
-
-  const { name, email, password } = req.body || {};
-  if (!name || !email || !password) {
-    return res.status(400).json({
-      message: "All fields are required"
-    });
-  }
-
   try {
-    const existingUser = await User.findOne({ email })
+    // Validate input
+    const { name, email, password } = registerSchema.parse(req.body);
+
+    // Check existing user
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
-        message: "User already exists"
-      })
-    }
-
-    const user = await User.create({
-      name,
-      email,
-      password
-    })
-
-    console.log(user);
-
-    if (!user) {
-      return res.status(400).json({
-        message: "User not registered!"
+        success: false,
+        message: "User already exists",
       });
     }
 
-    const token = crypto.randomBytes(32).toString("hex")
-    console.log(token);
-    user.verificationToken = token
+    // Create user
+    const user = await User.create({ name, email, password });
 
-    await user.save()
+    // Generate token + expiry
+    const token = crypto.randomBytes(32).toString("hex");
 
-    //send mail
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAILTRAP_HOST,
-      port: process.env.MAILTRAP_PORT,
-      secure: false, // Use true for port 465, false for port 587
-      auth: {
-        user: process.env.MAILTRAP_USERNAME,
-        pass: process.env.MAILTRAP_PASSWORD,
-      },
+    user.verificationToken = token;
+    user.verificationTokenExpires = Date.now() + 10 * 60 * 1000;
+
+    await user.save();
+
+    // Prepare verification URL
+    const verifyUrl = `${process.env.BASE_URL}/api/v1/users/verify/${token}`;
+
+    // SEND RESPONSE FIRST (CRITICAL FIX)
+    res.status(201).json({
+      success: true,
+      message: "User registered. Please verify your email.",
     });
 
-    const mailOptions = {
-      from: process.env.MAILTRAP_SENDEREMAIL,
-      to: user.email,
-      subject: "Verify your email.",
-      text: `Please clik on the following link:
-    ${process.env.BASE_URL}/api/v1/users/verify/${token}
-      `, // Plain-text version of the message
-    };
+    // Handle email ASYNC (non-blocking)
+    setImmediate(async () => {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.MAILTRAP_HOST,
+          port: process.env.MAILTRAP_PORT,
+          secure: false,
+          auth: {
+            user: process.env.MAILTRAP_USERNAME,
+            pass: process.env.MAILTRAP_PASSWORD,
+          },
+        });
 
-    await transporter.sendMail(mailOptions)
+        await transporter.sendMail({
+          from: process.env.MAILTRAP_SENDEREMAIL,
+          to: user.email,
+          subject: "Verify your email",
+          text: `Click the link:\n${verifyUrl}`,
+        });
 
-    return res.status(201).json({
-      message: "User registered successfully.",
-      success: true
-    })
+      } catch (emailError) {
+        console.warn("Email failed, fallback:");
+        console.log("Verification URL:", verifyUrl);
+      }
+    });
+
   } catch (error) {
-    res.status(400).json({
-      message: "User not registered",
-      error,
-      success: false
-    })
+    if (error.name === "ZodError") {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0].message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Registration failed",
+      error: error.message,
+    });
   }
 };
+
 
 const verifyUser = async (req, res) => {
   try {
