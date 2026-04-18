@@ -84,40 +84,44 @@ const registerUser = async (req, res) => {
 };
 
 const verifyUser = async (req, res) => {
-  //get token form url
-  //validate
-  //find user based on token
-  //if not
-  //set isVerified field to true
-  //remove verification token
-  //save
-  //return response
+  try {
+    const { token } = req.params;
 
-  const { token } = req.params
-  console.log(token);
-  if (!token) {
-    return res.status(400).json({
-      message: "Token not found"
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Token missing",
+      });
+    }
+
+    const user = await User.findOne({
+      verificationToken: token,
+      verificationTokenExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired token",
+      });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpires = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Verification failed",
     });
   }
-  const user = await User.findOne({ verificationToken: token })
-
-  if (!user) {
-    return res.status(400).json({
-      message: "User doesn't exist"
-    });
-  }
-
-  user.isVerified = true
-  user.verificationToken = undefined
-  await user.save()
-
-  return res.status(200).json({
-    success: true,
-    message: "Email verified successfully"
-  });
-
-
 };
 
 const login = async (req, res) => {
