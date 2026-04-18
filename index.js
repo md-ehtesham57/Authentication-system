@@ -45,7 +45,11 @@ app.get("/shahbaz", (req, res) => {
 db();
 
 //user routes
-app.use("/api/v1/users", userRoutes)
+app.use("/api/v1/users", userRoutes);
+
+app.use("/api/v1/users/register", userRoutes);
+
+app.use("/api/v1/users/login", userRoutes);
 
 app.listen(port, () => {
   console.log(`Example app listening on ${port}`);

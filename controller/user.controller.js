@@ -70,7 +70,7 @@ const registerUser = async (req, res) => {
 
     await transporter.sendMail(mailOptions)
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "User registered successfully.",
       success: true
     })
